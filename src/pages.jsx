@@ -67,7 +67,7 @@ function logout(navigate) {
   navigate('/');
 }
 
-function ServiceCards({ bookable = false, onBook }) {
+function ServiceCards({ bookable = false, onSelect }) {
   return (
     <div className="services">
       {services.map(service => (
@@ -80,7 +80,7 @@ function ServiceCards({ bookable = false, onBook }) {
           <div className="card-bottom">
             <b>From ₹{service.price}</b>
             {bookable && (
-              <button className="btn-sm" onClick={() => onBook(service.name)}>
+              <button className="btn-sm" onClick={() => onSelect(service)}>
                 Book
               </button>
             )}
@@ -91,7 +91,7 @@ function ServiceCards({ bookable = false, onBook }) {
   );
 }
 
-/* ==================== CLEAN HOME PAGE ==================== */
+/* ==================== FULL-WIDTH BENTO HOME PAGE ==================== */
 export function Home() {
   return (
     <>
@@ -105,36 +105,45 @@ export function Home() {
         }
       />
 
-      <main className="home-stage">
-        <div className="home-shell">
-          <span className="eyebrow">Home Maintenance Workspace</span>
-          <h1>
-            Home services, <span>made effortless.</span>
-          </h1>
-          <p>
-            Schedule trusted specialists for plumbing, electrical, cleaning, and home repairs in one clean workspace.
-          </p>
-
-          <div className="home-cta">
-            <Link className="button" to="/login">Login</Link>
-            <Link className="button btn-light" to="/signup">Create Account</Link>
-          </div>
-
-          <div className="bento-strip">
-            <div className="bento-mini">
-              <strong>8</strong>
-              <span>Service Domains</span>
-            </div>
-            <div className="bento-mini">
-              <strong>Instant</strong>
-              <span>Booking Requests</span>
-            </div>
-            <div className="bento-mini">
-              <strong>Role-Based</strong>
-              <span>Domain Admins</span>
+      <main className="home-container">
+        <section className="home-bento-hero">
+          <div>
+            <span className="eyebrow">Home Maintenance Workspace</span>
+            <h1>
+              Home services, <span>made effortless.</span>
+            </h1>
+            <p>
+              Schedule trusted specialists for plumbing, electrical, cleaning, and home repairs in one clean workspace.
+            </p>
+            <div className="home-cta">
+              <Link className="button" to="/login">Login</Link>
+              <Link className="button btn-light" to="/signup">Create Account</Link>
             </div>
           </div>
+
+          <div className="bento-right-grid">
+            <div className="bento-stat-card">
+              <strong>8 Domains</strong>
+              <span>Plumbing, Electrical, AC & more</span>
+            </div>
+            <div className="bento-stat-card">
+              <strong>Maps & GPS</strong>
+              <span>Pin your exact service location</span>
+            </div>
+            <div className="bento-stat-card wide">
+              <strong>Role-Based Operations</strong>
+              <span>Separate customer booking portal and domain-specific admin dashboards</span>
+            </div>
+          </div>
+        </section>
+
+        <div className="page-header" style={{ marginTop: '36px' }}>
+          <h2>Service Catalog</h2>
+          <span style={{ fontSize: '13.5px', color: 'var(--ink-secondary)' }}>
+            Sign in to book any service
+          </span>
         </div>
+        <ServiceCards />
       </main>
 
       <footer className="footer">HomeServices | SDC Project #59</footer>
@@ -278,11 +287,13 @@ export function Login() {
   );
 }
 
-/* ==================== USER MODULE ==================== */
+/* ==================== USER MODULE WITH GOOGLE MAPS & GPS ==================== */
 export function UserModule() {
   const navigate = useNavigate();
   const [current, setCurrent] = useState(null);
   const [bookings, setBookings] = useState([]);
+  const [selectedService, setSelectedService] = useState(null);
+  const [locationText, setLocationText] = useState('');
 
   useEffect(() => {
     const user = readStorage(CURRENT_KEY, null);
@@ -292,18 +303,57 @@ export function UserModule() {
     setBookings(getBookings().filter(b => b.email === user.email));
   }, [navigate]);
 
-  function book(service) {
+  function openBooking(service) {
+    setSelectedService(service);
+    setLocationText('');
+  }
+
+  function detectGPS() {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const coords = `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+        setLocationText(coords);
+      },
+      () => alert('Unable to fetch GPS location. Please enter your address manually.')
+    );
+  }
+
+  function submitBooking(event) {
+    event.preventDefault();
     const user = readStorage(CURRENT_KEY, null);
     if (!user) { navigate('/login'); return; }
+
+    const date = event.target.date.value;
+    const time = event.target.time.value;
+    const location = locationText.trim();
+
     const all = getBookings();
-    const booking = { id: Date.now(), name: user.name, email: user.email, service, status: 'Pending' };
+    const booking = {
+      id: Date.now(),
+      name: user.name,
+      email: user.email,
+      service: selectedService.name,
+      price: selectedService.price,
+      date,
+      time,
+      location,
+      status: 'Pending'
+    };
+
     all.push(booking);
     localStorage.setItem(BOOKINGS_KEY, JSON.stringify(all));
-    alert(service + ' booking request submitted!');
     setBookings(all.filter(b => b.email === user.email));
+    setSelectedService(null);
   }
 
   if (!current) return null;
+
+  const today = new Date().toISOString().split('T')[0];
+  const mapQuery = encodeURIComponent(locationText || 'Vijayawada, Andhra Pradesh');
 
   return (
     <>
@@ -319,7 +369,7 @@ export function UserModule() {
         <div className="page-header">
           <h2>Available Services</h2>
         </div>
-        <ServiceCards bookable onBook={book} />
+        <ServiceCards bookable onSelect={openBooking} />
 
         <div className="page-header" style={{ marginTop: '44px' }}>
           <h2>My Bookings ({bookings.length})</h2>
@@ -333,18 +383,88 @@ export function UserModule() {
                 <div>
                   <b>{b.service}</b>
                   <span className={`status-badge status-${b.status}`}>{b.status}</span>
+                  <p>
+                    {b.date ? `📅 ${b.date}` : ''} {b.time ? `• ⏰ ${b.time}` : ''}
+                    {b.location && (
+                      <>
+                        {' • 📍 '}
+                        <a
+                          className="map-link"
+                          href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.location)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {b.location}
+                        </a>
+                      </>
+                    )}
+                  </p>
                   <p>Booking ID: {b.id}</p>
                 </div>
+                {b.price && <b>₹{b.price}</b>}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {selectedService && (
+        <div className="modal-backdrop" onClick={() => setSelectedService(null)}>
+          <form className="modal-box" onClick={e => e.stopPropagation()} onSubmit={submitBooking}>
+            <div className="modal-header">
+              <h3>{selectedService.emoji} Book {selectedService.name}</h3>
+              <button
+                type="button"
+                className="btn-light btn-sm"
+                onClick={() => setSelectedService(null)}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="modal-sub">
+              {selectedService.description} • From ₹{selectedService.price}
+            </p>
+
+            <label>Select Date</label>
+            <input name="date" type="date" min={today} defaultValue={today} required />
+
+            <label>Time Slot</label>
+            <select name="time" required>
+              <option value="09:00 AM - 11:00 AM">09:00 AM - 11:00 AM</option>
+              <option value="11:30 AM - 01:30 PM">11:30 AM - 01:30 PM</option>
+              <option value="02:30 PM - 04:30 PM">02:30 PM - 04:30 PM</option>
+              <option value="05:00 PM - 07:00 PM">05:00 PM - 07:00 PM</option>
+            </select>
+
+            <label>Service Location / Address</label>
+            <div className="location-row">
+              <input
+                name="location"
+                value={locationText}
+                onChange={e => setLocationText(e.target.value)}
+                required
+              />
+              <button type="button" className="btn-light btn-sm" onClick={detectGPS}>
+                📍 GPS
+              </button>
+            </div>
+
+            <iframe
+              title="Location Preview"
+              className="map-preview"
+              loading="lazy"
+              src={`https://maps.google.com/maps?q=${mapQuery}&t=&z=14&ie=UTF8&iwloc=&output=embed`}
+            />
+
+            <button className="button">Confirm Booking</button>
+          </form>
+        </div>
+      )}
     </>
   );
 }
 
-/* ==================== ADMIN MODULE ==================== */
+/* ==================== ADMIN MODULE WITH CLICKABLE MAP LINKS ==================== */
 export function AdminModule() {
   const navigate = useNavigate();
   const [current, setCurrent] = useState(null);
@@ -435,6 +555,24 @@ export function AdminModule() {
                   <b>{b.service}</b>
                   <span className={`status-badge status-${b.status}`}>{b.status}</span>
                   <p>Customer: {b.name} ({b.email}) • ID: {b.id}</p>
+                  {(b.date || b.location) && (
+                    <p>
+                      {b.date ? `📅 ${b.date}` : ''} {b.time ? `• ⏰ ${b.time}` : ''}
+                      {b.location && (
+                        <>
+                          {' • 📍 '}
+                          <a
+                            className="map-link"
+                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.location)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {b.location}
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <select value={b.status} onChange={e => updateStatus(b.id, e.target.value)}>
                   <option>Pending</option>
